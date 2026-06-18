@@ -52,6 +52,10 @@
       <p class="stat">空中炸掉：<b id="final-blast">0</b></p>
       <p class="stat">最大连击：<b id="final-combo">0</b></p>
       <p class="stat">漏掉：<b id="final-miss">0</b></p>
+      <div id="missed-block" style="display:none;margin:10px 0;">
+        <p style="color:#ff6b6b;font-size:14px;margin-bottom:6px;">❌ 漏掉的字母</p>
+        <div id="missed-letters" style="font-size:36px;font-weight:900;letter-spacing:8px;color:#ff4444;text-shadow:0 0 20px rgba(255,68,68,.6);"></div>
+      </div>
       <button onclick="startGame()">再来一局 🔄</button>
     </div>
   </div>
@@ -79,6 +83,7 @@ const speedBtns=document.querySelectorAll('.speed-btn');
 // ═══ State ═══
 let W,H,groundY,letters=[],particles=[];
 let score=0,missed=0,blasted=0,combo=0,maxCombo=0,running=false,animId,speed='medium',spawnTimer=0;
+let missedLetters=[];
 
 // ═══ Audio SFX ═══
 let aCtx=null;
@@ -108,8 +113,30 @@ function upd(){scoreEl.textContent=score;missEl.textContent=missed;blastEl.textC
 let ht;function show(m,h){voiceHint.textContent=m;voiceHint.style.color=h?'#55ff55':'#ff5555';voiceHint.classList.add('show');clearTimeout(ht);ht=setTimeout(()=>voiceHint.classList.remove('show'),h?600:1200)}
 
 // ═══ Game ═══
-function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
-function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;overlay.classList.add('show');sfxMiss()}
+function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;missedLetters=[];upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
+function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;showMissedLetters();overlay.classList.add('show');sfxMiss()}
+
+function showMissedLetters(){
+  const block=document.getElementById('missed-block');
+  const el=document.getElementById('missed-letters');
+  if(missedLetters.length>0){
+    // Group and count: {'A':3, 'b':2, ...}
+    const count={};
+    for(const ch of missedLetters){
+      const k=ch.toUpperCase();
+      count[k]=(count[k]||0)+1;
+    }
+    // Show uppercase with count if >1
+    const parts=[];
+    for(const [k,v] of Object.entries(count)){
+      parts.push(v>1?`${k}×${v}`:k);
+    }
+    el.textContent=parts.join(' ');
+    block.style.display='block';
+  }else{
+    block.style.display='none';
+  }
+}
 
 // ═══ Keyboard ═══
 input.oninput=()=>{if(!running)return;const v=input.value;if(!v)return;match(v);input.value=''};
@@ -204,7 +231,7 @@ langBtn.onclick=()=>{
 function loop(ts){animId=requestAnimationFrame(loop);rs();if(!running)return;
   const c=CFG[speed];
   if(++spawnTimer>=c.sp){spawnTimer=0;letters.push(sp());if(speed==='fast'&&Math.random()<.25)letters.push(sp());if(speed==='fast'&&Math.random()<.12)letters.push(sp())}
-  for(let i=letters.length-1;i>=0;i--){letters[i].y+=letters[i].vy;if(letters[i].y>groundY){letters.splice(i,1);missed++;combo=0;sfxMiss();if(missed>=15)endGame();upd()}}
+  for(let i=letters.length-1;i>=0;i--){letters[i].y+=letters[i].vy;if(letters[i].y>groundY){missedLetters.push(letters[i].ch);letters.splice(i,1);missed++;combo=0;sfxMiss();if(missed>=15)endGame();upd()}}
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=p.dc;if(p.life<=0){particles.splice(i,1);continue}if(!p.ring){p.x+=p.vx;p.y+=p.vy;p.vy+=.08}}
   ctx.clearRect(0,0,W,H);
   for(let i=0;i<20;i++){ctx.fillStyle='rgba(255,255,255,.03)';ctx.fillRect((ts*.02+i*37)%W,(ts*.05+i*53)%H,1.5,1.5)}
