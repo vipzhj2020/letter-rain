@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>掉字母 🎤💥</title>
+<title>掉字母 🎤💥 v3</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100dvh;overflow:hidden;font-family:'SF Pro','PingFang SC','Microsoft YaHei',sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none;}
@@ -114,26 +114,47 @@ let ht;function show(m,h){voiceHint.textContent=m;voiceHint.style.color=h?'#55ff
 
 // ═══ Game ═══
 function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;missedLetters=[];upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
-function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;showMissedLetters();overlay.classList.add('show');sfxMiss()}
+function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;showMissedLetters();drawMissedCanvas();overlay.classList.add('show');sfxMiss()}
+
+function drawMissedCanvas(){
+  // Draw summary directly on canvas as fallback
+  const count={};
+  for(const ch of missedLetters){const k=ch.toUpperCase();count[k]=(count[k]||0)+1}
+  const parts=[];
+  for(const [k,v] of Object.entries(count)){parts.push(v>1?`${k}×${v}`:k)}
+  const txt=parts.join(' ');
+  if(!txt)return;
+
+  // Semi-transparent overlay
+  ctx.fillStyle='rgba(0,0,0,.6)';
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle='#ff6b6b';
+  ctx.font='bold 16px "SF Pro","PingFang SC",sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('❌ 漏掉的字母',W/2,H/2-60);
+
+  ctx.fillStyle='#ff4444';
+  ctx.shadowColor='rgba(255,68,68,.7)';
+  ctx.shadowBlur=25;
+  ctx.font='bold 48px "SF Pro","PingFang SC",sans-serif';
+  ctx.fillText(txt,W/2,H/2+10);
+  ctx.shadowBlur=0;
+}
 
 function showMissedLetters(){
   const block=document.getElementById('missed-block');
   const el=document.getElementById('missed-letters');
+  if(!block||!el)return;
   if(missedLetters.length>0){
-    // Group and count: {'A':3, 'b':2, ...}
     const count={};
-    for(const ch of missedLetters){
-      const k=ch.toUpperCase();
-      count[k]=(count[k]||0)+1;
-    }
-    // Show uppercase with count if >1
+    for(const ch of missedLetters){const k=ch.toUpperCase();count[k]=(count[k]||0)+1}
     const parts=[];
-    for(const [k,v] of Object.entries(count)){
-      parts.push(v>1?`${k}×${v}`:k);
-    }
+    for(const [k,v] of Object.entries(count)){parts.push(v>1?`${k}×${v}`:k)}
     el.textContent=parts.join(' ');
     block.style.display='block';
   }else{
+    el.textContent='';
     block.style.display='none';
   }
 }
