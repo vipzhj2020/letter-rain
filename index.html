@@ -100,7 +100,13 @@ function rs(){const w=document.getElementById('canvas-wrap');W=w.clientWidth;H=w
 addEventListener('resize',rs);
 
 // ═══ Spawn ═══
-function sp(){return{ch:LETS[Math.random()*LETS.length|0],x:30+Math.random()*(W-60),y:-30,fz:28+(Math.random()*16|0),vy:CFG[speed].v*(.8+Math.random()*.4),h:Math.random()*360}}
+let deck=[],deckIdx=0;
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a}
+function refillDeck(){deck=shuffle([...LETS]);deckIdx=0}
+function sp(){
+  if(deckIdx>=deck.length)refillDeck();
+  return{ch:deck[deckIdx++],x:30+Math.random()*(W-60),y:-30,fz:28+(Math.random()*16|0),vy:CFG[speed].v*(.8+Math.random()*.4),h:Math.random()*360}
+}
 
 // ═══ Explode ═══
 function boom(x,y,h){for(let i=0,n=14+(Math.random()*10|0);i<n;i++){const a=Math.random()*Math.PI*2,v=2+Math.random()*5;particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-3,life:1,dc:.015+Math.random()*.03,sz:2+Math.random()*4,hu:h+Math.random()*40-20})}particles.push({x,y,vx:0,vy:0,life:1,dc:.04,sz:0,hu:h,ring:!0})}
@@ -113,7 +119,7 @@ function upd(){scoreEl.textContent=score;missEl.textContent=missed;blastEl.textC
 let ht;function show(m,h){voiceHint.textContent=m;voiceHint.style.color=h?'#55ff55':'#ff5555';voiceHint.classList.add('show');clearTimeout(ht);ht=setTimeout(()=>voiceHint.classList.remove('show'),h?600:1200)}
 
 // ═══ Game ═══
-function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;missedLetters=[];upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
+function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;missedLetters=[];refillDeck();upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
 function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;showMissedLetters();drawMissedCanvas();overlay.classList.add('show');sfxMiss()}
 
 function drawMissedCanvas(){
