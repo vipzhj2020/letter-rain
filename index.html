@@ -160,10 +160,28 @@ function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecog
 
 function abortRestart(){clearTimeout(rt);if(!micActive)return;try{recog.abort()}catch(e){}rt=setTimeout(()=>{if(!micActive)return;try{recog.start()}catch(e){}},30)}
 
-let rt;
-async function toggleMic(){if(!recog){initVoice();if(!recog)return}
+let rt,micStream=null,permChecked=!1;
+
+async function ensurePerm(){
+  if(micStream)return!0;
+  // Check if permission already granted (Chrome)
+  try{
+    if(navigator.permissions){
+      const s=await navigator.permissions.query({name:'microphone'});
+      if(s.state==='granted'){micStream=await navigator.mediaDevices.getUserMedia({audio:!0});return!0}
+    }
+  }catch(e){}
+  // Ask once
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({audio:!0});
+    return!0;
+  }catch(e){show('🔇 请允许麦克风权限');return!1}
+}
+
+async function toggleMic(){
+  if(!recog){initVoice();if(!recog)return}
   if(micActive){stopMic();return}
-  try{const s=await navigator.mediaDevices.getUserMedia({audio:!0});s.getTracks().forEach(t=>t.stop())}catch(e){show('🔇 请允许麦克风权限');return}
+  if(!await ensurePerm())return;
   micActive=!0;micBtn.className='mic-active';micBtn.textContent='🎤 ●';
   try{recog.start()}catch(e){micActive=!1;micBtn.className='';micBtn.textContent='🎤'}
 }
