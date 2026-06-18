@@ -12,6 +12,9 @@
   #hud .score{font-size:28px;font-weight:700;color:#ffd700;}
   #hud .miss{color:#ff5555;}
   #hud .combo{color:#55ff55;font-size:14px;}
+  #hud .timer{color:#ff9f43;font-weight:700;font-size:16px;}
+  #hud .timer.low{color:#ff4444;animation:blink .5s infinite;}
+  @keyframes blink{50%{opacity:.3}}
   #canvas-wrap{flex:1;position:relative;background:radial-gradient(ellipse at 50% 80%,#1a1a3a 0%,#0a0a1a 70%);border-top:1px solid #222;border-bottom:1px solid #222;}
   canvas{display:block;width:100%;height:100%;}
   #input-area{flex-shrink:0;padding:8px 20px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
@@ -39,6 +42,7 @@
 <div id="wrap">
   <div id="hud">
     <span>⭐ <span class="score" id="score">0</span></span>
+    <span>⏱ <span class="timer" id="timer">30</span>s</span>
     <span>🔥 <span class="combo" id="combo"></span></span>
     <span>💥 <span id="blast-count">0</span></span>
     <span>❌ <span class="miss" id="miss">0</span></span>
@@ -76,7 +80,7 @@ const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
 const input=document.getElementById('letter-input'),micBtn=document.getElementById('mic-btn');
 const voiceHint=document.getElementById('voice-hint');
 const scoreEl=document.getElementById('score'),missEl=document.getElementById('miss');
-const blastEl=document.getElementById('blast-count'),comboEl=document.getElementById('combo');
+const blastEl=document.getElementById('blast-count'),comboEl=document.getElementById('combo'),timerEl=document.getElementById('timer');
 const overlay=document.getElementById('game-over-overlay');
 const speedBtns=document.querySelectorAll('.speed-btn');
 
@@ -84,6 +88,7 @@ const speedBtns=document.querySelectorAll('.speed-btn');
 let W,H,groundY,letters=[],particles=[];
 let score=0,missed=0,blasted=0,combo=0,maxCombo=0,running=false,animId,speed='medium',spawnTimer=0;
 let missedLetters=[];
+let timeLeft=30,lastTick=0,GAME_TIME=30;
 
 // ═══ Audio SFX ═══
 let aCtx=null;
@@ -119,7 +124,7 @@ function upd(){scoreEl.textContent=score;missEl.textContent=missed;blastEl.textC
 let ht;function show(m,h){voiceHint.textContent=m;voiceHint.style.color=h?'#55ff55':'#ff5555';voiceHint.classList.add('show');clearTimeout(ht);ht=setTimeout(()=>voiceHint.classList.remove('show'),h?600:1200)}
 
 // ═══ Game ═══
-function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;missedLetters=[];refillDeck();upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
+function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;missedLetters=[];refillDeck();timeLeft=GAME_TIME;lastTick=0;timerEl.textContent=timeLeft;timerEl.classList.remove('low');upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
 function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;showMissedLetters();drawMissedCanvas();overlay.classList.add('show');sfxMiss()}
 
 function drawMissedCanvas(){
@@ -256,9 +261,14 @@ langBtn.onclick=()=>{
 
 // ═══ Loop ═══
 function loop(ts){animId=requestAnimationFrame(loop);rs();if(!running)return;
+  // Timer countdown (every second)
+  if(!lastTick)lastTick=ts;
+  if(ts-lastTick>=1000){lastTick=ts;timeLeft--;timerEl.textContent=timeLeft;if(timeLeft<=5)timerEl.classList.add('low');}
+  if(timeLeft<=0){endGame();return;}
+
   const c=CFG[speed];
   if(++spawnTimer>=c.sp){spawnTimer=0;letters.push(sp());if(speed==='fast'&&Math.random()<.25)letters.push(sp());if(speed==='fast'&&Math.random()<.12)letters.push(sp())}
-  for(let i=letters.length-1;i>=0;i--){letters[i].y+=letters[i].vy;if(letters[i].y>groundY){missedLetters.push(letters[i].ch);letters.splice(i,1);missed++;combo=0;sfxMiss();if(missed>=15)endGame();upd()}}
+  for(let i=letters.length-1;i>=0;i--){letters[i].y+=letters[i].vy;if(letters[i].y>groundY){missedLetters.push(letters[i].ch);letters.splice(i,1);missed++;combo=0;sfxMiss();upd()}}
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=p.dc;if(p.life<=0){particles.splice(i,1);continue}if(!p.ring){p.x+=p.vx;p.y+=p.vy;p.vy+=.08}}
   ctx.clearRect(0,0,W,H);
   for(let i=0;i<20;i++){ctx.fillStyle='rgba(255,255,255,.03)';ctx.fillRect((ts*.02+i*37)%W,(ts*.05+i*53)%H,1.5,1.5)}
