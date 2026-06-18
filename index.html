@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>掉字母 🎤💥</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100dvh;overflow:hidden;font-family:'SF Pro','PingFang SC','Microsoft YaHei',sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none;}
+  #wrap{position:relative;width:100vw;height:100dvh;display:flex;flex-direction:column;}
+  #hud{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;color:#ccc;font-size:16px;gap:12px;flex-shrink:0;}
+  #hud .score{font-size:28px;font-weight:700;color:#ffd700;}
+  #hud .miss{color:#ff5555;}
+  #hud .combo{color:#55ff55;font-size:14px;}
+  #canvas-wrap{flex:1;position:relative;background:radial-gradient(ellipse at 50% 80%,#1a1a3a 0%,#0a0a1a 70%);border-top:1px solid #222;border-bottom:1px solid #222;}
+  canvas{display:block;width:100%;height:100%;}
+  #input-area{flex-shrink:0;padding:8px 20px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+  #letter-input{flex:1;min-width:80px;padding:14px 16px;font-size:24px;font-weight:bold;text-align:center;background:#1a1a2e;color:#fff;border:2px solid #333;border-radius:12px;outline:none;letter-spacing:2px;caret-color:#ffd700;}
+  #letter-input:focus{border-color:#ffd700;}
+  .speed-btn{padding:10px 18px;font-size:14px;font-weight:700;border-radius:20px;border:2px solid #444;background:transparent;color:#aaa;cursor:pointer;white-space:nowrap;}
+  .speed-btn.active{background:#ffd700;color:#0a0a1a;border-color:#ffd700;}
+  #mic-btn{padding:12px 20px;font-size:16px;font-weight:700;border-radius:20px;border:2px solid #444;background:transparent;color:#aaa;cursor:pointer;white-space:nowrap;}
+  .mic-active{background:#ff4444;color:#fff;border-color:#ff4444;animation:pulse .8s infinite;}
+  #start-btn{padding:12px 24px;font-size:16px;font-weight:700;border-radius:20px;border:none;background:#ffd700;color:#0a0a1a;cursor:pointer;white-space:nowrap;}
+  #lang-btn{padding:10px 16px;font-size:12px;font-weight:700;border-radius:20px;border:2px solid #333;background:transparent;color:#888;cursor:pointer;white-space:nowrap;}
+  #lang-btn.en{color:#4af;border-color:#4af;}
+  #lang-btn.zh{color:#ffaa00;border-color:#ffaa00;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,68,68,.4)}50%{box-shadow:0 0 0 10px rgba(255,68,68,0)}}
+  #game-over-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.75);z-index:10;pointer-events:none;opacity:0;transition:opacity .4s;}
+  #game-over-overlay.show{opacity:1;pointer-events:auto;}
+  #game-over-overlay h2{font-size:28px;color:#ffd700;margin-bottom:4px;}
+  #game-over-overlay .stat{color:#ccc;font-size:15px;margin:2px;}
+  #game-over-overlay button{margin-top:14px;padding:10px 24px;font-size:15px;border-radius:24px;border:none;background:#ffd700;color:#0a0a1a;font-weight:700;cursor:pointer;}
+  #voice-hint{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);font-size:15px;font-weight:700;opacity:0;transition:opacity .3s;text-shadow:0 0 12px rgba(255,215,0,.6);pointer-events:none;z-index:5;}
+  #voice-hint.show{opacity:1;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span>⭐ <span class="score" id="score">0</span></span>
+    <span>🔥 <span class="combo" id="combo"></span></span>
+    <span>💥 <span id="blast-count">0</span></span>
+    <span>❌ <span class="miss" id="miss">0</span></span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="voice-hint"></div>
+    <div id="game-over-overlay">
+      <h2>🎯 游戏结束</h2>
+      <p class="stat">得分：<b id="final-score">0</b></p>
+      <p class="stat">空中炸掉：<b id="final-blast">0</b></p>
+      <p class="stat">最大连击：<b id="final-combo">0</b></p>
+      <p class="stat">漏掉：<b id="final-miss">0</b></p>
+      <button onclick="startGame()">再来一局 🔄</button>
+    </div>
+  </div>
+  <div id="input-area">
+    <button class="speed-btn" data-speed="slow">🐢 慢</button>
+    <button class="speed-btn active" data-speed="medium">🐇 中</button>
+    <button class="speed-btn" data-speed="fast">🚀 快</button>
+    <input id="letter-input" type="text" maxlength="1" placeholder="输入/说出字母" autocomplete="off">
+    <button id="mic-btn">🎤</button>
+    <button id="lang-btn" class="en">EN</button>
+    <button id="start-btn">▶ 开始</button>
+  </div>
+</div>
+
+<script>
+// ═══ DOM ═══
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const input=document.getElementById('letter-input'),micBtn=document.getElementById('mic-btn');
+const voiceHint=document.getElementById('voice-hint');
+const scoreEl=document.getElementById('score'),missEl=document.getElementById('miss');
+const blastEl=document.getElementById('blast-count'),comboEl=document.getElementById('combo');
+const overlay=document.getElementById('game-over-overlay');
+const speedBtns=document.querySelectorAll('.speed-btn');
+
+// ═══ State ═══
+let W,H,groundY,letters=[],particles=[];
+let score=0,missed=0,blasted=0,combo=0,maxCombo=0,running=false,animId,speed='medium',spawnTimer=0;
+
+// ═══ Audio SFX ═══
+let aCtx=null;
+function beep(f,t='square',d=.08,v=.06){try{if(!aCtx)aCtx=new AudioContext();const o=aCtx.createOscillator(),g=aCtx.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,aCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,aCtx.currentTime+d);o.connect(g);g.connect(aCtx.destination);o.start();o.stop(aCtx.currentTime+d)}catch(e){}}
+function sfxHit(){beep(880)}function sfxMiss(){beep(150,'sawtooth',.2,.08)}function sfxCombo(){beep(1200,'triangle',.1,.06)}function sfxBoom(){beep(80,'sawtooth',.25,.12)}
+
+// ═══ Config ═══
+const CFG={slow:{v:.6,sp:72},medium:{v:1.2,sp:45},fast:{v:2.4,sp:28}};
+const LETS='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
+const NM={a:'A',ay:'A',b:'B',bee:'B',be:'B',c:'C',see:'C',sea:'C',d:'D',dee:'D',e:'E',ee:'E',f:'F',eff:'F',ef:'F',g:'G',gee:'G',h:'H',aitch:'H',i:'I',eye:'I',ai:'I',j:'J',jay:'J',k:'K',kay:'K',l:'L',el:'L',ell:'L',m:'M',em:'M',n:'N',en:'N',o:'O',oh:'O',p:'P',pee:'P',q:'Q',cue:'Q',queue:'Q',r:'R',ar:'R',are:'R',s:'S',ess:'S',t:'T',tee:'T',tea:'T',u:'U',you:'U',v:'V',vee:'V',w:'W','double u':'W','double you':'W',x:'X',ex:'X',y:'Y',why:'Y',wye:'Y',z:'Z',zee:'Z',zed:'Z'};
+
+// ═══ Resize ═══
+function rs(){const w=document.getElementById('canvas-wrap');W=w.clientWidth;H=w.clientHeight;canvas.width=W*(devicePixelRatio||1);canvas.height=H*(devicePixelRatio||1);ctx.setTransform(1,0,0,1,0,0);ctx.scale(devicePixelRatio||1,devicePixelRatio||1);groundY=H-40}
+addEventListener('resize',rs);
+
+// ═══ Spawn ═══
+function sp(){return{ch:LETS[Math.random()*LETS.length|0],x:30+Math.random()*(W-60),y:-30,fz:28+(Math.random()*16|0),vy:CFG[speed].v*(.8+Math.random()*.4),h:Math.random()*360}}
+
+// ═══ Explode ═══
+function boom(x,y,h){for(let i=0,n=14+(Math.random()*10|0);i<n;i++){const a=Math.random()*Math.PI*2,v=2+Math.random()*5;particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-3,life:1,dc:.015+Math.random()*.03,sz:2+Math.random()*4,hu:h+Math.random()*40-20})}particles.push({x,y,vx:0,vy:0,life:1,dc:.04,sz:0,hu:h,ring:!0})}
+
+// ═══ Match ═══
+function match(ch){if(!running)return!1;const u=ch.toUpperCase();for(let i=letters.length-1;i>=0;i--){const L=letters[i];if(L.ch.toUpperCase()===u){boom(L.x,L.y,L.h);letters.splice(i,1);blasted++;combo++;if(combo>maxCombo)maxCombo=combo;score+=combo>=10?20:combo>=5?10:combo>=3?5:1;combo>=5?sfxCombo():sfxHit();sfxBoom();upd();show(`💥 ${L.ch}`,1);return!0}}combo=0;upd();return!1}
+
+// ═══ HUD ═══
+function upd(){scoreEl.textContent=score;missEl.textContent=missed;blastEl.textContent=blasted;comboEl.textContent=combo>1?`${combo}连击!`:''}
+let ht;function show(m,h){voiceHint.textContent=m;voiceHint.style.color=h?'#55ff55':'#ff5555';voiceHint.classList.add('show');clearTimeout(ht);ht=setTimeout(()=>voiceHint.classList.remove('show'),h?600:1200)}
+
+// ═══ Game ═══
+function startGame(){rs();letters=[];particles=[];score=missed=blasted=combo=maxCombo=spawnTimer=0;upd();overlay.classList.remove('show');input.value='';input.focus();running=!0;if(!animId)loop()}
+function endGame(){running=!1;micActive&&stopMic();document.getElementById('final-score').textContent=score;document.getElementById('final-blast').textContent=blasted;document.getElementById('final-combo').textContent=maxCombo;document.getElementById('final-miss').textContent=missed;overlay.classList.add('show');sfxMiss()}
+
+// ═══ Keyboard ═══
+input.oninput=()=>{if(!running)return;const v=input.value;if(!v)return;match(v);input.value=''};
+input.onkeydown=e=>{if(e.key==='Backspace'||e.key==='Delete')return;if(input.value.length>=1&&e.key.length===1){e.preventDefault();input.value=e.key;input.dispatchEvent(new Event('input'))}};
+
+// ═══ Speed ═══
+speedBtns.forEach(b=>b.onclick=()=>{speedBtns.forEach(x=>x.classList.remove('active'));b.classList.add('active');speed=b.dataset.speed;input.focus()});
+document.getElementById('start-btn').onclick=startGame;
+
+// ═══════════════════════════════
+// VOICE: macOS 系统自带听写
+// ═══════════════════════════════
+let recog=null,micActive=!1,voiceLang='en-US';
+const langBtn=document.getElementById('lang-btn');
+
+function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){micBtn.style.opacity='.3';micBtn.title='浏览器不支持';return}recog=new SR();recog.lang=voiceLang;recog.continuous=!1;recog.interimResults=!0;recog.maxAlternatives=5;
+
+  recog.onresult=e=>{
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      for(let j=0;j<r.length;j++){
+        let t=r[j].transcript.trim().toLowerCase();
+        if(!t)continue;
+        show(`🎧 ${t}`,1);
+        // Split into words (space/comma/dot separated)
+        const words=t.split(/[\s,.\-]+/).filter(w=>w);
+        let matched=!1;
+        for(const w of words){
+          // single letter
+          if(w.length===1&&/[a-z]/.test(w)){if(match(w)){matched=!0;break}}
+          // name map
+          const m=NM[w];if(m&&match(m)){matched=!0;break}
+          // first letter fallback
+          if(/^[a-z]/.test(w)&&match(w[0])){matched=!0;break}
+        }
+        // joined (e.g. "doubleyou")
+        if(!matched){const jo=t.replace(/\s+/g,'');if(NM[jo]&&match(NM[jo]))matched=!0}
+        if(!matched&&/^[a-z]/.test(t)&&match(t[0]))matched=!0;
+        // If matched, abort+restart immediately for next letter
+        if(matched){abortRestart();return}
+      }
+    }
+  };
+
+  recog.onerror=e=>{console.log('🎤',e.error);if(e.error==='not-allowed'){micBtn.style.opacity='.3';micBtn.title='麦克风被拒';stopMic()}if(e.error==='no-speech'){if(micActive)abortRestart()}if(e.error==='aborted'){}};
+  recog.onend=()=>{if(micActive)abortRestart()};
+}
+
+function abortRestart(){clearTimeout(rt);if(!micActive)return;try{recog.abort()}catch(e){}rt=setTimeout(()=>{if(!micActive)return;try{recog.start()}catch(e){}},30)}
+
+let rt;
+async function toggleMic(){if(!recog){initVoice();if(!recog)return}
+  if(micActive){stopMic();return}
+  try{const s=await navigator.mediaDevices.getUserMedia({audio:!0});s.getTracks().forEach(t=>t.stop())}catch(e){show('🔇 请允许麦克风权限');return}
+  micActive=!0;micBtn.className='mic-active';micBtn.textContent='🎤 ●';
+  try{recog.start()}catch(e){micActive=!1;micBtn.className='';micBtn.textContent='🎤'}
+}
+function stopMic(){micActive=!1;clearTimeout(rt);micBtn.className='';micBtn.textContent='🎤';try{recog.abort()}catch(e){}}
+micBtn.onclick=toggleMic;
+
+// Language toggle
+langBtn.onclick=()=>{
+  const wasActive=micActive;
+  if(wasActive)stopMic();
+  voiceLang=voiceLang==='en-US'?'zh-CN':'en-US';
+  langBtn.textContent=voiceLang==='en-US'?'EN':'中';
+  langBtn.className=voiceLang==='en-US'?'en':'zh';
+  recog=null;initVoice();
+  show(`语言: ${voiceLang==='en-US'?'英文':'中文'}`,1);
+  if(wasActive)setTimeout(toggleMic,300);
+};
+
+// ═══ Loop ═══
+function loop(ts){animId=requestAnimationFrame(loop);rs();if(!running)return;
+  const c=CFG[speed];
+  if(++spawnTimer>=c.sp){spawnTimer=0;letters.push(sp());if(speed==='fast'&&Math.random()<.25)letters.push(sp());if(speed==='fast'&&Math.random()<.12)letters.push(sp())}
+  for(let i=letters.length-1;i>=0;i--){letters[i].y+=letters[i].vy;if(letters[i].y>groundY){letters.splice(i,1);missed++;combo=0;sfxMiss();if(missed>=15)endGame();upd()}}
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=p.dc;if(p.life<=0){particles.splice(i,1);continue}if(!p.ring){p.x+=p.vx;p.y+=p.vy;p.vy+=.08}}
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<20;i++){ctx.fillStyle='rgba(255,255,255,.03)';ctx.fillRect((ts*.02+i*37)%W,(ts*.05+i*53)%H,1.5,1.5)}
+  ctx.strokeStyle='rgba(255,100,100,.3)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,groundY);ctx.lineTo(W,groundY);ctx.stroke();
+  for(const L of letters){ctx.save();ctx.translate(L.x,L.y);ctx.shadowColor=`hsl(${L.h},80%,60%)`;ctx.shadowBlur=10;ctx.font=`bold ${L.fz}px "SF Pro","PingFang SC",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';const g=ctx.createLinearGradient(0,-L.fz/2,0,L.fz/2);L.ch===L.ch.toUpperCase()?(g.addColorStop(0,'#ffd700'),g.addColorStop(1,'#ff8c00')):(g.addColorStop(0,'#55ccff'),g.addColorStop(1,'#3388cc'));ctx.fillStyle=g;ctx.fillText(L.ch,0,0);ctx.restore()}
+  for(const p of particles){ctx.save();ctx.globalAlpha=p.life;if(p.ring){p.sz+=3;ctx.strokeStyle=`hsl(${p.hu},100%,70%)`;ctx.lineWidth=2*p.life;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.stroke()}else{ctx.fillStyle=`hsl(${p.hu},100%,${50+p.life*30}%)`;ctx.shadowColor=`hsl(${p.hu},100%,70%)`;ctx.shadowBlur=6;ctx.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz)}ctx.restore()}
+  ctx.fillStyle='rgba(255,255,255,.2)';ctx.font='11px sans-serif';ctx.textAlign='right';ctx.fillText(`${c.sp<40?'快':c.sp<60?'中':'慢'}速`,W-12,18);
+  if(micActive){ctx.fillStyle='rgba(255,68,68,.5)';ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('🎤 收听中',10,18)}
+}
+
+// ═══ Init ═══
+rs();
+ctx.clearRect(0,0,W,H);ctx.strokeStyle='rgba(255,100,100,.2)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,groundY);ctx.lineTo(W,groundY);ctx.stroke();
+ctx.fillStyle='rgba(255,255,255,.15)';ctx.font='17px sans-serif';ctx.textAlign='center';
+ctx.fillText('点 🎤 开启系统听写，说出字母炸掉它',W/2,H/2-30);
+ctx.fillText('也可以直接打字',W/2,H/2+10);
+initVoice();
+canvas.onclick=()=>input.focus();
+document.onkeydown=e=>{if(e.key==='Enter'&&!running){e.preventDefault();startGame()}};
+</script>
+</body>
+</html>
