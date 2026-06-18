@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>骑士过河 🏇⚔️</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100dvh;overflow:hidden;font-family:'SF Pro','PingFang SC',sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none;}
+#wrap{width:100vw;max-width:700px;height:100dvh;display:flex;flex-direction:column;}
+canvas{display:block;width:100%;flex:1;background:#0a1628;}
+#panel{flex-shrink:0;padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px;background:#0d1a2d;border-top:1px solid #1a2a40;}
+#question{color:#ffd700;font-size:17px;font-weight:700;text-align:center;min-height:44px;display:flex;align-items:center;justify-content:center;}
+#answer-row{display:flex;gap:8px;align-items:center;}
+#answer-input{flex:1;padding:12px 14px;font-size:18px;font-weight:bold;text-align:center;background:#1a1a2e;color:#fff;border:2px solid #333;border-radius:12px;outline:none;caret-color:#ffd700;}
+#answer-input:focus{border-color:#ffd700;}
+#answer-input.correct{border-color:#55ff55;background:#1a3a1a;animation:pop .3s;}
+#answer-input.wrong{border-color:#ff4444;background:#3a1a1a;animation:shake .4s;}
+@keyframes pop{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+#submit-btn{padding:12px 24px;font-size:16px;font-weight:700;border-radius:20px;border:none;background:#ffd700;color:#0a0a1a;cursor:pointer;white-space:nowrap;}
+#hud{display:flex;justify-content:space-between;padding:6px 14px;color:#ccc;font-size:13px;gap:10px;}
+#hud span{white-space:nowrap;}
+.lives{color:#ff5555;}.score{color:#ffd700;}.level{color:#55ccff;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span>❤️ <span class="lives" id="lives">❤️❤️❤️</span></span>
+    <span>⭐ <span class="score" id="score">0</span></span>
+    <span>🏰 <span class="level" id="level">第1关</span></span>
+  </div>
+  <canvas id="c"></canvas>
+  <div id="panel">
+    <div id="question">准备好出发了吗？🏇</div>
+    <div id="answer-row">
+      <input id="answer-input" type="text" placeholder="输入答案..." autocomplete="off" autocorrect="off">
+      <button id="submit-btn">⚔️ 回答</button>
+    </div>
+  </div>
+</div>
+<script>
+// ═══ DOM ═══
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const input=document.getElementById('answer-input'),submitBtn=document.getElementById('submit-btn');
+const questionEl=document.getElementById('question');
+const livesEl=document.getElementById('lives'),scoreEl=document.getElementById('score'),levelEl=document.getElementById('level');
+
+// ═══ State ═══
+let W,H,animId;
+let currentPlatform=0; // knight's position (0-indexed)
+let lives=3,score=0,level=1,platformsPerLevel=7;
+let platforms=[];
+let answering=false; // waiting for answer
+let targetPlatform=-1;
+let knightAnim=null; // {x,y,progress,direction}
+
+// ═══ Question pool ═══
+const questions=[
+  // Vocab
+  {q:"'苹果' 用英语怎么说？",a:"apple"},
+  {q:"'书' 用英语怎么说？",a:"book"},
+  {q:"'猫' 的英语是什么？",a:"cat"},
+  {q:"'狗' 用英语怎么说？",a:"dog"},
+  {q:"'老师' 的英语？",a:"teacher"},
+  {q:"'学生' 的英语？",a:"student"},
+  {q:"'学校' 用英语怎么说？",a:"school"},
+  {q:"'水' 的英语是什么？",a:"water"},
+  {q:"'花' 用英语怎么说？",a:"flower"},
+  {q:"'太阳' 的英语？",a:"sun"},
+  {q:"'月亮' 用英语？",a:"moon"},
+  {q:"'星星' 的英语？",a:"star"},
+  {q:"'朋友' 用英语怎么说？",a:"friend"},
+  {q:"'家庭' 的英语？",a:"family"},
+  {q:"'颜色' 用英语怎么说？",a:"color"},
+  {q:"'动物' 的英语是什么？",a:"animal"},
+  // Grammar fill
+  {q:"I ___ a student. (be动词)",a:"am"},
+  {q:"She ___ a teacher. (be动词)",a:"is"},
+  {q:"They ___ friends. (be动词)",a:"are"},
+  {q:"He ___ to school every day. (go)",a:"goes"},
+  {q:"I ___ my homework yesterday. (do 过去式)",a:"did"},
+  {q:"She is ___ than me. (tall 比较级)",a:"taller"},
+  {q:"There ___ a book on the desk. (be)",a:"is"},
+  {q:"Can you ___ English? (speak)",a:"speak"},
+  {q:"I like ___ basketball. (play)",a:"playing"},
+  {q:"Let's ___ to the park. (go)",a:"go"},
+  {q:"He ___ TV now. (watch 现在进行时)",a:"is watching"},
+  {q:"We ___ lunch at 12:00. (have 一般现在时)",a:"have"},
+  {q:"___ you like music? (Do/Does)",a:"do"},
+  // Translation
+  {q:"'你好' 用英语怎么说？",a:"hello"},
+  {q:"'谢谢' 用英语怎么说？",a:"thank you"},
+  {q:"'对不起' 用英语怎么说？",a:"sorry"},
+  {q:"'再见' 用英语？",a:"goodbye"},
+  {q:"'早上好' 的英语？",a:"good morning"},
+  {q:"'生日快乐' 的英语？",a:"happy birthday"},
+  {q:"'我爱你' 用英语？",a:"i love you"},
+  // Knowledge
+  {q:"一周有几天？（英文数字）",a:"seven"},
+  {q:"一年有几个月？（英文数字）",a:"twelve"},
+  {q:"一小时有多少分钟？（英文数字）",a:"sixty"},
+  {q:"红色用英语怎么说？",a:"red"},
+  {q:"蓝色用英语怎么说？",a:"blue"},
+  {q:"绿色用英语怎么说？",a:"green"},
+  {q:"中国的首都是？（英文）",a:"beijing"},
+  {q:"星期一用英语？",a:"monday"},
+  {q:"星期五用英语？",a:"friday"},
+  {q:"大象的英语？",a:"elephant"},
+];
+
+function pickQuestion(){
+  const pool=questions;
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+// ═══ Audio ═══
+let aCtx=null;
+function beep(f,t='square',d=.08,v=.06){
+  try{if(!aCtx)aCtx=new AudioContext();const o=aCtx.createOscillator(),g=aCtx.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,aCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,aCtx.currentTime+d);o.connect(g);g.connect(aCtx.destination);o.start();o.stop(aCtx.currentTime+d)}catch(e){}
+}
+function sfxCorrect(){beep(523);setTimeout(()=>beep(659),80);setTimeout(()=>beep(784),160)}
+function sfxWrong(){beep(120,'sawtooth',.35,.1)}
+function sfxWin(){beep(523);setTimeout(()=>beep(659),100);setTimeout(()=>beep(784),200);setTimeout(()=>beep(1047),300)}
+
+// ═══ Resize ═══
+function rs(){W=canvas.clientWidth;H=canvas.clientHeight;canvas.width=W*(devicePixelRatio||1);canvas.height=H*(devicePixelRatio||1);ctx.setTransform(1,0,0,1,0,0);ctx.scale(devicePixelRatio||1,devicePixelRatio||1)}
+addEventListener('resize',rs);
+
+// ═══ Platform generation ═══
+function genPlatforms(){
+  const n=platformsPerLevel;
+  const plats=[];
+  const marginX=60,marginY=50;
+  const usableW=W-marginX*2,usableH=H-marginY*2;
+  for(let i=0;i<n;i++){
+    const t=i/(n-1); // 0..1
+    const x=marginX+t*usableW;
+    const y=marginY+(Math.sin(t*Math.PI*1.5)*(usableH*.35)+usableH*.45);
+    plats.push({x,y,r:22+Math.random()*6});
+  }
+  platforms=plats;
+}
+
+// ═══ Draw ═══
+function draw(ts){
+  ctx.clearRect(0,0,W,H);
+
+  // Water
+  const waterGrad=ctx.createLinearGradient(0,0,0,H);
+  waterGrad.addColorStop(0,'#0a1628');
+  waterGrad.addColorStop(0.3,'#0d2840');
+  waterGrad.addColorStop(0.6,'#0f3060');
+  waterGrad.addColorStop(1,'#081830');
+  ctx.fillStyle=waterGrad;
+  ctx.fillRect(0,0,W,H);
+
+  // Water ripples
+  ctx.strokeStyle='rgba(100,180,255,.08)';
+  ctx.lineWidth=1;
+  for(let i=0;i<20;i++){
+    const rx=(ts*.02+i*53)%W,ry=(ts*.03+i*71)%H;
+    ctx.beginPath();ctx.arc(rx,ry,8+Math.sin(ts*.01+i)*4,0,Math.PI*2);ctx.stroke();
+  }
+
+  // Draw platforms
+  for(let i=0;i<platforms.length;i++){
+    const p=platforms[i];
+    const isCurrent=i===currentPlatform;
+    const isTarget=i===targetPlatform;
+    const reached=i<currentPlatform;
+
+    ctx.save();
+    ctx.translate(p.x,p.y);
+
+    // Shadow on water
+    ctx.fillStyle='rgba(0,0,0,.3)';
+    ctx.beginPath();ctx.ellipse(0,8,p.r*.8,p.r*.3,0,0,Math.PI*2);ctx.fill();
+
+    // Stone
+    const stoneGrad=ctx.createRadialGradient(-p.r*.2,-p.r*.2,p.r*.1,0,0,p.r);
+    stoneGrad.addColorStop(0,'#8899aa');
+    stoneGrad.addColorStop(0.6,'#556677');
+    stoneGrad.addColorStop(1,'#334455');
+    if(reached){stoneGrad.addColorStop(0,'#88cc88');stoneGrad.addColorStop(1,'#336633')}
+    else if(isCurrent){stoneGrad.addColorStop(0,'#ddaa44');stoneGrad.addColorStop(1,'#885522')}
+    else if(isTarget){stoneGrad.addColorStop(0,'#ffcc44');stoneGrad.addColorStop(1,'#aa6600')}
+
+    ctx.fillStyle=stoneGrad;
+    ctx.beginPath();ctx.arc(0,0,p.r,0,Math.PI*2);ctx.fill();
+
+    // Glow for current/target
+    if(isCurrent||isTarget){
+      ctx.shadowColor=isCurrent?'rgba(255,180,30,.6)':'rgba(255,200,50,.8)';
+      ctx.shadowBlur=15;
+      ctx.strokeStyle='rgba(255,200,100,.5)';
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(0,0,p.r+2,0,Math.PI*2);ctx.stroke();
+      ctx.shadowBlur=0;
+    }
+
+    // Platform number
+    ctx.fillStyle='rgba(255,255,255,.2)';
+    ctx.font='10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(i+1,0,1);
+
+    ctx.restore();
+
+    // Connecting ripple path between platforms
+    if(i<platforms.length-1){
+      const nxt=platforms[i+1];
+      ctx.strokeStyle='rgba(255,255,255,.05)';
+      ctx.lineWidth=1;ctx.setLineDash([4,8]);
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(nxt.x,nxt.y);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Draw knight
+  const kp=platforms[currentPlatform];
+  let kx=kp.x,ky=kp.y;
+
+  // Animate knight jump
+  if(knightAnim){
+    const a=knightAnim;
+    const from=platforms[a.from],to=platforms[a.to];
+    const t=Math.min(a.progress,1);
+    // Arc jump
+    kx=from.x+(to.x-from.x)*t;
+    ky=from.y+(to.y-from.y)*t-Math.sin(t*Math.PI)*50;
+    // Shadow on water
+    const sx=from.x+(to.x-from.x)*t;
+    const sy=from.y+(to.y-from.y)*t;
+    ctx.fillStyle='rgba(0,0,0,.25)';
+    ctx.beginPath();ctx.ellipse(sx,sy+15,12,4,0,0,Math.PI*2);ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(kx,ky-4);
+
+  // Knight glow
+  ctx.shadowColor='rgba(255,200,50,.5)';
+  ctx.shadowBlur=12;
+
+  // Shield
+  ctx.fillStyle='#8899cc';
+  ctx.beginPath();ctx.arc(-8,-2,7,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#aabbee';
+  ctx.beginPath();ctx.arc(-8,-2,4,0,Math.PI*2);ctx.fill();
+
+  // Sword
+  ctx.strokeStyle='#ddd';
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(10,-10);ctx.lineTo(16,-18);ctx.stroke();
+  ctx.fillStyle='#ffd700';
+  ctx.beginPath();ctx.arc(16,-18,2,0,Math.PI*2);ctx.fill();
+
+  // Body
+  ctx.fillStyle='#556688';
+  ctx.beginPath();ctx.arc(0,0,9,0,Math.PI*2);ctx.fill();
+
+  // Helmet
+  ctx.fillStyle='#667799';
+  ctx.beginPath();ctx.arc(0,-5,8,Math.PI,0);ctx.fill();
+  ctx.fillStyle='#7788aa';
+  ctx.fillRect(-3,-8,6,4);
+
+  // Eyes
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.arc(-3,-4,2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(3,-4,2,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath();ctx.arc(-3,-4,1,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(3,-4,1,0,Math.PI*2);ctx.fill();
+
+  // Legs
+  ctx.fillStyle='#445566';
+  ctx.fillRect(-4,8,3,5);
+  ctx.fillRect(1,8,3,5);
+
+  ctx.restore();
+
+  // Destination flag
+  const last=platforms[platforms.length-1];
+  ctx.fillStyle='#ffd700';
+  ctx.font='14px sans-serif';ctx.textAlign='center';
+  ctx.fillText('🏁',last.x,last.y-38);
+  ctx.fillStyle='rgba(255,215,0,.3)';
+  ctx.font='9px sans-serif';
+  ctx.fillText('过关',last.x,last.y-22);
+
+  // Start marker
+  const first=platforms[0];
+  ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.font='9px sans-serif';ctx.textAlign='center';
+  ctx.fillText('起点',first.x,first.y+32);
+}
+
+// ═══ Game logic ═══
+let currentQuestion=null;
+
+function startLevel(){
+  currentPlatform=0;
+  genPlatforms();
+  answering=false;targetPlatform=-1;knightAnim=null;
+  currentQuestion=null;
+  questionEl.textContent='点击下一个石台前进！';
+  input.value='';input.disabled=false;input.focus();
+  levelEl.textContent=`第${level}关`;
+  updateLives();
+}
+
+function updateLives(){
+  livesEl.textContent='❤️'.repeat(lives)+'🖤'.repeat(Math.max(0,3-lives));
+  scoreEl.textContent=score;
+}
+
+function tryMove(){
+  if(answering||knightAnim)return;
+  if(currentPlatform>=platforms.length-1)return;
+
+  const next=currentPlatform+1;
+  targetPlatform=next;
+  const q=pickQuestion();
+  currentQuestion=q;
+  questionEl.textContent='❓ '+q.q;
+  input.value='';input.focus();input.disabled=false;
+  answering=true;
+}
+
+function submitAnswer(){
+  if(!answering||!currentQuestion)return;
+  const ans=input.value.trim().toLowerCase();
+  const correct=currentQuestion.a.toLowerCase();
+
+  if(ans===correct){
+    // Correct!
+    input.classList.add('correct');
+    setTimeout(()=>input.classList.remove('correct'),300);
+    sfxCorrect();
+    score+=10*level+combo*5;
+    questionEl.textContent='✅ 正确！前进！';
+
+    // Animate jump
+    knightAnim={from:currentPlatform,to:targetPlatform,progress:0};
+    animateJump();
+
+    input.value='';input.disabled=true;
+    answering=false;currentQuestion=null;
+    combo++;
+  }else{
+    // Wrong
+    input.classList.add('wrong');
+    setTimeout(()=>input.classList.remove('wrong'),400);
+    sfxWrong();
+    lives--;combo=0;
+    updateLives();
+    questionEl.textContent=`❌ 错误！正确答案: ${currentQuestion.a}`;
+    if(lives<=0){
+      gameOver();
+      return;
+    }
+    answering=false;currentQuestion=null;targetPlatform=-1;
+    input.value='';input.disabled=false;
+    setTimeout(()=>{
+      if(!answering)questionEl.textContent='再试一次！点击下一个石台';
+    },1500);
+  }
+  updateLives();
+}
+
+let combo=0;
+function animateJump(){
+  const anim=knightAnim;
+  if(!anim)return;
+
+  const from=platforms[anim.from],to=platforms[anim.to];
+  const duration=400; // ms per jump
+  const startTime=performance.now();
+
+  function step(ts){
+    const elapsed=ts-startTime;
+    anim.progress=Math.min(elapsed/duration,1);
+    // Ease
+    anim.progress=anim.progress<.5
+      ?2*anim.progress*anim.progress
+      :-1+(4-2*anim.progress)*anim.progress;
+
+    if(anim.progress>=1){
+      currentPlatform=anim.to;
+      knightAnim=null;targetPlatform=-1;
+      input.disabled=false;input.focus();
+
+      if(currentPlatform>=platforms.length-1){
+        // Level complete!
+        sfxWin();
+        level++;
+        combo=0;
+        questionEl.textContent='🏆 过关！进入下一关...';
+        setTimeout(startLevel,1500);
+      }else{
+        questionEl.textContent='点击下一个石台继续前进！';
+      }
+      return;
+    }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function gameOver(){
+  questionEl.textContent='💀 骑士倒下了... 点击重新开始';
+  input.disabled=true;
+  answering=false;
+  drawGameOver();
+}
+
+function drawGameOver(){
+  ctx.fillStyle='rgba(0,0,0,.7)';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ff4444';
+  ctx.font='bold 36px "SF Pro","PingFang SC",sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('游戏结束',W/2,H/2-20);
+  ctx.fillStyle='#ffd700';
+  ctx.font='16px sans-serif';
+  ctx.fillText(`得分: ${score}  到达第 ${level} 关`,W/2,H/2+20);
+}
+
+function restart(){
+  lives=3;score=0;level=1;combo=0;
+  updateLives();
+  startLevel();
+  input.disabled=false;
+}
+
+// ═══ Event listeners ═══
+submitBtn.onclick=submitAnswer;
+input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();submitAnswer()}};
+canvas.onclick=e=>{
+  if(lives<=0){restart();return}
+  if(answering||knightAnim)return;
+  // Check if clicked near next platform
+  if(currentPlatform>=platforms.length-1)return;
+  const next=platforms[currentPlatform+1];
+  const rect=canvas.getBoundingClientRect();
+  const mx=(e.clientX-rect.left)*(W/rect.width);
+  const my=(e.clientY-rect.top)*(H/rect.height);
+  const dist=Math.hypot(mx-next.x,my-next.y);
+  if(dist<40){tryMove()}
+};
+
+// ═══ Loop ═══
+function loop(ts){
+  animId=requestAnimationFrame(loop);
+  rs();
+  if(lives<=0)return;
+  genPlatforms(); // refresh positions on resize
+  draw(ts);
+}
+
+// ═══ Init ═══
+rs();startLevel();loop(0);
+</script>
+</body>
+</html>
