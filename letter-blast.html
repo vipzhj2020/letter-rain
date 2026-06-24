@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>字母排雷 💣💥</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100dvh;overflow:hidden;font-family:'SF Pro','PingFang SC',sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+#wrap{width:100vw;height:100dvh;display:flex;flex-direction:column}
+#hud{display:flex;justify-content:center;align-items:center;padding:16px 24px;color:#ccc;font-size:16px;gap:24px;flex-shrink:0}
+#hud .score{font-size:32px;font-weight:700;color:#ffd700}
+#hud .combo{color:#55ff55}
+#canvas-wrap{flex:1;position:relative;background:radial-gradient(ellipse at 50% 50%,#1a1a3a 0%,#0a0a1a 80%)}
+canvas{display:block;width:100%;height:100%}
+#voice-hint{position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:18px;font-weight:700;opacity:0;transition:opacity .3s;text-shadow:0 0 12px rgba(255,215,0,.6);pointer-events:none;z-index:5}
+#voice-hint.show{opacity:1}
+#input-bar{flex-shrink:0;padding:10px 20px 20px;display:flex;gap:10px;align-items:center;justify-content:center}
+#letter-input{width:100px;padding:12px;font-size:28px;font-weight:bold;text-align:center;background:#1a1a2e;color:#fff;border:2px solid #333;border-radius:12px;outline:none;caret-color:#ffd700}
+#letter-input:focus{border-color:#ffd700}
+#mic-btn{padding:12px 20px;font-size:18px;font-weight:700;border-radius:20px;border:2px solid #444;background:transparent;color:#aaa;cursor:pointer}
+.mic-active{background:#ff4444!important;color:#fff!important;border-color:#ff4444!important}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <span>💣 <span class="score" id="score">0</span></span>
+    <span>🔥 <span class="combo" id="combo"></span></span>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+    <div id="voice-hint"></div>
+  </div>
+  <div id="input-bar">
+    <input id="letter-input" type="text" maxlength="1" placeholder="A" autocomplete="off">
+    <button id="mic-btn">🎤</button>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const input=document.getElementById('letter-input'),micBtn=document.getElementById('mic-btn');
+const voiceHint=document.getElementById('voice-hint');
+const scoreEl=document.getElementById('score'),comboEl=document.getElementById('combo');
+
+// ── State ──
+const COLS=5;
+let W,H,letters=[],particles=[],score=0,combo=0,maxCombo=0,animId;
+let targetY;
+
+// ── Audio ──
+let aCtx=null;
+function beep(f,t='square',d=.08,v=.06){try{if(!aCtx)aCtx=new AudioContext();const o=aCtx.createOscillator(),g=aCtx.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(v,aCtx.currentTime);g.gain.exponentialRampToValueAtTime(.001,aCtx.currentTime+d);o.connect(g);g.connect(aCtx.destination);o.start();o.stop(aCtx.currentTime+d)}catch(e){}}
+
+// ── Resize ──
+function rs(){const wrap=document.getElementById('canvas-wrap');W=wrap.clientWidth;H=wrap.clientHeight;canvas.width=W*(devicePixelRatio||1);canvas.height=H*(devicePixelRatio||1);ctx.setTransform(1,0,0,1,0,0);ctx.scale(devicePixelRatio||1,devicePixelRatio||1);targetY=H/2}
+addEventListener('resize',rs);
+
+// ── Spawn row ──
+function spawnRow(){
+  letters=[];
+  const used=new Set(),spacing=Math.min(W/(COLS+1),120);
+  const startX=(W-spacing*(COLS-1))/2;
+  for(let i=0;i<COLS;i++){
+    let ch;
+    do{ch=String.fromCharCode(65+Math.random()*26|0)}while(used.has(ch));
+    used.add(ch);
+    const x=startX+i*spacing;
+    letters.push({ch,x,y:-80,targetY,vy:0,sz:52+Math.random()*10|0,hu:Math.random()*360,spawnT:performance.now()});
+  }
+}
+
+// ── Explode ──
+function boom(x,y,h){
+  for(let i=0,n=20+Math.random()*12|0;i<n;i++){
+    const a=Math.random()*Math.PI*2,v=3+Math.random()*6;
+    particles.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-4,life:1,dc:.012+Math.random()*.03,sz:3+Math.random()*5,hu:h+Math.random()*50-25});
+  }
+  particles.push({x,y,vx:0,vy:0,life:1,dc:.03,sz:0,hu:h,ring:true});
+}
+
+// ── Match ──
+function match(ch){
+  const u=ch.toUpperCase();
+  for(let i=0;i<letters.length;i++){
+    if(letters[i].ch===u){
+      boom(letters[i].x,letters[i].y,letters[i].hu);
+      // Replace with new random letter (different from all current)
+      const used=new Set(letters.map(l=>l.ch));
+      let nc;do{nc=String.fromCharCode(65+Math.random()*26|0)}while(used.has(nc));
+      letters[i]={ch:nc,x:letters[i].x,y:-80,targetY,vy:0,sz:52+Math.random()*10|0,hu:Math.random()*360,spawnT:performance.now()};
+      score++;combo++;
+      if(combo>maxCombo)maxCombo=combo;
+      beep(1200,'triangle',.1,.06);
+      beep(80,'sawtooth',.25,.12);
+      upd();
+      show('💥 '+u);
+      return true;
+    }
+  }
+  combo=0;upd();
+  beep(150,'sawtooth',.2,.08);
+  return false;
+}
+
+// ── HUD ──
+function upd(){scoreEl.textContent=score;comboEl.textContent=combo>1?combo+'连击!':''}
+let ht;
+function show(m){voiceHint.textContent=m;voiceHint.classList.add('show');clearTimeout(ht);ht=setTimeout(()=>voiceHint.classList.remove('show'),600)}
+
+// ── Keyboard ──
+input.oninput=()=>{const v=input.value;if(!v)return;match(v);input.value=''};
+input.onkeydown=e=>{if(input.value.length>=1&&e.key.length===1){e.preventDefault();input.value=e.key;input.dispatchEvent(new Event('input'))}};
+
+// ─═ VOICE ═─
+let recog=null,micActive=false;
+const NM={a:'A',ay:'A',b:'B',bee:'B',be:'B',c:'C',see:'C',sea:'C',d:'D',dee:'D',e:'E',ee:'E',f:'F',eff:'F',ef:'F',g:'G',gee:'G',h:'H',aitch:'H',i:'I',eye:'I',ai:'I',j:'J',jay:'J',k:'K',kay:'K',l:'L',el:'L',ell:'L',m:'M',em:'M',n:'N',en:'N',o:'O',oh:'O',p:'P',pee:'P',q:'Q',cue:'Q',queue:'Q',r:'R',ar:'R',are:'R',s:'S',ess:'S',t:'T',tee:'T',tea:'T',u:'U',you:'U',v:'V',vee:'V',w:'W','double u':'W','double you':'W',x:'X',ex:'X',y:'Y',why:'Y',wye:'Y',z:'Z',zee:'Z',zed:'Z'};
+
+function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){micBtn.style.opacity='.3';return}recog=new SR();recog.lang='en-US';recog.continuous=false;recog.interimResults=true;recog.maxAlternatives=8;
+  recog.onresult=e=>{
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      for(let j=0;j<r.length;j++){
+        let t=r[j].transcript.trim().toLowerCase();
+        if(!t)continue;
+        const words=t.split(/[\s,.\\-]+/).filter(w=>w);
+        let matched=false;
+        for(const w of words){
+          if(w.length===1&&/[a-z]/.test(w)){if(match(w)){matched=true;break}}
+          const m=NM[w];if(m&&match(m)){matched=true;break}
+        }
+        if(!matched){const jo=t.replace(/\s+/g,'');if(NM[jo]&&match(NM[jo]))matched=true}
+        if(matched){abortRestart();return}
+      }
+    }
+  };
+  recog.onerror=e=>{if(e.error==='not-allowed'){micBtn.style.opacity='.3';stopMic()}if(e.error==='no-speech'&&micActive)abortRestart()};
+  recog.onend=()=>{if(micActive)abortRestart()};
+}
+
+function abortRestart(){clearTimeout(rt);if(!micActive)return;try{recog.abort()}catch(e){}rt=setTimeout(()=>{if(!micActive)return;try{recog.start()}catch(e){}},30)}
+let rt,micStream=null;
+
+async function ensurePerm(){if(micStream)return true;try{if(navigator.permissions){const s=await navigator.permissions.query({name:'microphone'});if(s.state==='granted'){micStream=await navigator.mediaDevices.getUserMedia({audio:true});return true}}}catch(e){}try{micStream=await navigator.mediaDevices.getUserMedia({audio:true});return true}catch(e){return false}}
+
+async function toggleMic(){
+  if(!recog){initVoice();if(!recog)return}
+  if(micActive){stopMic();return}
+  if(!await ensurePerm()){show('🔇 请允许麦克风权限');return}
+  micActive=true;micBtn.className='mic-active';micBtn.textContent='🎤 ●';
+  try{recog.start()}catch(e){micActive=false;micBtn.className='';micBtn.textContent='🎤'}
+}
+function stopMic(){micActive=false;clearTimeout(rt);micBtn.className='';micBtn.textContent='🎤';try{recog.abort()}catch(e){}}
+micBtn.onclick=toggleMic;
+
+// ─═ LOOP ─═
+function loop(ts){animId=requestAnimationFrame(loop);rs();
+  const now=performance.now();
+  // Animate letter spawns
+  for(const L of letters){
+    if(L.y<L.targetY){
+      L.y+=(L.targetY-L.y)*.1+2;
+      if(L.y>=L.targetY)L.y=L.targetY;
+    }
+    // Bounce after landing
+    if(L.y===L.targetY&&now-L.spawnT<400){
+      const elapsed=now-L.spawnT;
+      L.y=L.targetY-Math.abs(Math.sin(elapsed*.02))*Math.max(0,20-elapsed*.05);
+    }
+  }
+  // Update particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=p.dc;if(p.life<=0){particles.splice(i,1);continue}if(!p.ring){p.x+=p.vx;p.y+=p.vy;p.vy+=.08}}
+  // Draw
+  ctx.clearRect(0,0,W,H);
+  // Stars
+  for(let i=0;i<25;i++){ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect((now*.01+i*41)%W,(now*.03+i*67)%H,2,2)}
+  // Letters
+  for(const L of letters){
+    const pulse=1+Math.sin(now*.003+L.hu)*.03;
+    ctx.save();ctx.translate(L.x,L.y);ctx.scale(pulse,pulse);
+    ctx.shadowColor=`hsl(${L.hu},80%,60%)`;ctx.shadowBlur=18;
+    ctx.font=`bold ${L.sz}px "SF Pro","PingFang SC",sans-serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    const g=ctx.createLinearGradient(0,-L.sz/2,0,L.sz/2);
+    g.addColorStop(0,'#ffd700');g.addColorStop(.5,'#fff8dc');g.addColorStop(1,'#ff8c00');
+    ctx.fillStyle=g;ctx.fillText(L.ch,0,0);
+    ctx.restore();
+  }
+  // Particles
+  for(const p of particles){ctx.save();ctx.globalAlpha=p.life;if(p.ring){p.sz+=3;ctx.strokeStyle=`hsl(${p.hu},100%,70%)`;ctx.lineWidth=3*p.life;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.stroke()}else{ctx.fillStyle=`hsl(${p.hu},100%,${50+p.life*30}%)`;ctx.shadowColor=`hsl(${p.hu},100%,70%)`;ctx.shadowBlur=6;ctx.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz)}ctx.restore()}
+  // Mic indicator
+  if(micActive){ctx.fillStyle='rgba(255,68,68,.4)';ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('🎤 收听中',12,18)}
+}
+
+// ─═ Init ─═
+rs();initVoice();spawnRow();
+const ua=navigator.userAgent;
+const isWeChat=/MicroMessenger/i.test(ua);
+if(isWeChat||(!(window.SpeechRecognition||window.webkitSpeechRecognition))){micBtn.style.opacity='.3';micBtn.title='微信内不可用，请在浏览器打开'}
+
+ctx.clearRect(0,0,W,H);
+ctx.fillStyle='rgba(255,255,255,.15)';ctx.font='16px sans-serif';ctx.textAlign='center';
+ctx.fillText('点 🎤 开启听写，说出字母炸掉它',W/2,H/3);
+ctx.fillText('也可以直接打字',W/2,H/3+30);
+ctx.textAlign='start';
+
+canvas.onclick=()=>input.focus();
+loop();
+</script>
+</body>
+</html>
