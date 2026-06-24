@@ -80,16 +80,19 @@ function boom(x,y,h){
   particles.push({x,y,vx:0,vy:0,life:1,dc:.03,sz:0,hu:h,ring:true});
 }
 
-// ── Match ──
+// ── Match (O(1) with Map) ──
+let letterMap=new Map();
+function rebuildMap(){letterMap.clear();letters.forEach((l,i)=>letterMap.set(l.ch,i))}
 function match(ch){
   const u=ch.toUpperCase();
-  for(let i=0;i<letters.length;i++){
-    if(letters[i].ch===u){
+  const idx=letterMap.get(u);
+  if(idx!==undefined){const i=idx;
       boom(letters[i].x,letters[i].y,letters[i].hu);
       // Replace with new random letter (different from all current)
       const used=new Set(letters.map(l=>l.ch));
       let nc;do{nc=String.fromCharCode(65+Math.random()*26|0)}while(used.has(nc));
       letters[i]={ch:nc,x:letters[i].x,y:-80,targetY,vy:0,sz:52+Math.random()*10|0,hu:Math.random()*360,spawnT:performance.now()};
+      letterMap.delete(u);letterMap.set(nc,i);
       score++;combo++;
       if(combo>maxCombo)maxCombo=combo;
       beep(1200,'triangle',.1,.06);
@@ -117,7 +120,7 @@ input.onkeydown=e=>{if(input.value.length>=1&&e.key.length===1){e.preventDefault
 let recog=null,micActive=false;
 const NM={a:'A',ay:'A',b:'B',bee:'B',be:'B',c:'C',see:'C',sea:'C',d:'D',dee:'D',e:'E',ee:'E',f:'F',eff:'F',ef:'F',g:'G',gee:'G',h:'H',aitch:'H',i:'I',eye:'I',ai:'I',j:'J',jay:'J',k:'K',kay:'K',l:'L',el:'L',ell:'L',m:'M',em:'M',n:'N',en:'N',o:'O',oh:'O',p:'P',pee:'P',q:'Q',cue:'Q',queue:'Q',r:'R',ar:'R',are:'R',s:'S',ess:'S',t:'T',tee:'T',tea:'T',u:'U',you:'U',v:'V',vee:'V',w:'W','double u':'W','double you':'W',x:'X',ex:'X',y:'Y',why:'Y',wye:'Y',z:'Z',zee:'Z',zed:'Z'};
 
-function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){micBtn.style.opacity='.3';return}recog=new SR();recog.lang='en-US';recog.continuous=false;recog.interimResults=true;recog.maxAlternatives=8;
+function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){micBtn.style.opacity='.3';return}recog=new SR();recog.lang='en-US';recog.continuous=false;recog.interimResults=true;recog.maxAlternatives=3;
   recog.onresult=e=>{
     for(let i=e.resultIndex;i<e.results.length;i++){
       const r=e.results[i];
@@ -139,7 +142,7 @@ function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecog
   recog.onend=()=>{if(micActive)abortRestart()};
 }
 
-function abortRestart(){clearTimeout(rt);if(!micActive)return;try{recog.abort()}catch(e){}rt=setTimeout(()=>{if(!micActive)return;try{recog.start()}catch(e){}},30)}
+function abortRestart(){clearTimeout(rt);if(!micActive)return;try{recog.abort()}catch(e){}rt=setTimeout(()=>{if(!micActive)return;try{recog.start()}catch(e){}},10)}
 let rt,micStream=null;
 
 async function ensurePerm(){if(micStream)return true;try{if(navigator.permissions){const s=await navigator.permissions.query({name:'microphone'});if(s.state==='granted'){micStream=await navigator.mediaDevices.getUserMedia({audio:true});return true}}}catch(e){}try{micStream=await navigator.mediaDevices.getUserMedia({audio:true});return true}catch(e){return false}}
@@ -194,7 +197,7 @@ function loop(ts){animId=requestAnimationFrame(loop);rs();
 }
 
 // ─═ Init ─═
-rs();initVoice();spawnRow();
+rs();initVoice();spawnRow();rebuildMap();
 const ua=navigator.userAgent;
 const isWeChat=/MicroMessenger/i.test(ua);
 if(isWeChat||(!(window.SpeechRecognition||window.webkitSpeechRecognition))){micBtn.style.opacity='.3';micBtn.title='微信内不可用，请在浏览器打开'}
