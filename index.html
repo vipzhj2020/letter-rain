@@ -192,7 +192,6 @@ function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecog
       for(let j=0;j<r.length;j++){
         let t=r[j].transcript.trim().toLowerCase();
         if(!t)continue;
-        show(`🎧 ${t}`,1);
         // Split into words (space/comma/dot separated)
         const words=t.split(/[\s,.\\-]+/).filter(w=>w);
         let matched=!1;
