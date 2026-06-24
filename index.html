@@ -194,19 +194,16 @@ function initVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecog
         if(!t)continue;
         show(`🎧 ${t}`,1);
         // Split into words (space/comma/dot separated)
-        const words=t.split(/[\s,.\-]+/).filter(w=>w);
+        const words=t.split(/[\s,.\\-]+/).filter(w=>w);
         let matched=!1;
         for(const w of words){
           // single letter
           if(w.length===1&&/[a-z]/.test(w)){if(match(w)){matched=!0;break}}
-          // name map
+          // name map only — no first-letter fallback; strictly alphabet
           const m=NM[w];if(m&&match(m)){matched=!0;break}
-          // first letter fallback
-          if(/^[a-z]/.test(w)&&match(w[0])){matched=!0;break}
         }
         // joined (e.g. "doubleyou")
         if(!matched){const jo=t.replace(/\s+/g,'');if(NM[jo]&&match(NM[jo]))matched=!0}
-        if(!matched&&/^[a-z]/.test(t)&&match(t[0]))matched=!0;
         // If matched, abort+restart immediately for next letter
         if(matched){abortRestart();return}
       }
